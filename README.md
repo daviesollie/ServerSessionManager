@@ -27,7 +27,7 @@ Notes:
 
 ## Building from source
 
-Requires Node.js 20+ (a portable copy is kept in `.tools\node` for this repo).
+Requires Node.js 20+
 
 ```
 npm install
