@@ -1,10 +1,10 @@
 {
   "name": "server-session-manager",
   "productName": "Server Session Manager",
-  "version": "1.3.5",
+  "version": "0.4.0",
   "description": "Portable SSH / SFTP / FTP / RDP connection manager with embedded terminal, file browser and remote desktop",
   "main": "main.js",
-  "author": "Peel",
+  "author": "Ollie Davies",
   "license": "MIT",
   "scripts": {
     "start": "electron .",
@@ -22,7 +22,7 @@
     "ssh2": "^1.16.0"
   },
   "build": {
-    "appId": "co.peel.serversessionmanager",
+    "appId": "com.olliedavies.serversessionmanager",
     "productName": "Server Session Manager",
     "directories": {
       "output": "dist"

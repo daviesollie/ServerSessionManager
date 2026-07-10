@@ -16,7 +16,7 @@ A portable Windows connection manager for SSH, SFTP, FTP, FTPS and RDP. Save you
 
 ## Running
 
-Run `dist\Server-Session-Manager-1.3.5.exe`. First launch asks you to create a master password. The vault lives at `%APPDATA%\Server Session Manager\vault.dat`.
+Download the portable exe from the [Releases page](../../releases) and run it, or build it from source (see below). First launch asks you to create a master password. The vault lives at `%APPDATA%\Server Session Manager\vault.dat`.
 
 Notes:
 
