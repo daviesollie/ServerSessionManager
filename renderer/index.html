@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;" />
+  <title>Server Session Manager</title>
+  <link rel="stylesheet" href="../node_modules/@xterm/xterm/css/xterm.css" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ============ LOCK SCREEN ============ -->
+  <div id="lock-screen" class="screen">
+    <div class="lock-card">
+      <div class="lock-logo">&#128274;</div>
+      <h1 id="lock-title">Unlock vault</h1>
+      <p id="lock-subtitle" class="muted">Enter your master password</p>
+      <form id="lock-form">
+        <input type="password" id="lock-password" placeholder="Master password" autofocus />
+        <input type="password" id="lock-password2" placeholder="Confirm master password" class="hidden" />
+        <label class="remember-row"><input type="checkbox" id="lock-remember" /> Remember on this device for 14 days</label>
+        <div id="lock-error" class="error-text hidden"></div>
+        <button type="submit" id="lock-submit" class="btn primary wide">Unlock</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ============ MAIN APP ============ -->
+  <div id="app-screen" class="screen hidden">
+    <div class="sidebar">
+      <div class="sidebar-header">
+        <span class="app-title">Connections</span>
+        <button id="btn-new-conn" class="btn small primary" title="New connection">+ New</button>
+      </div>
+      <input type="search" id="conn-search" placeholder="Search..." />
+      <div id="conn-list" class="conn-list"></div>
+      <div class="sidebar-footer">
+        <button id="btn-change-pw" class="btn small ghost">Change password</button>
+        <button id="btn-lock" class="btn small ghost">&#128274; Lock</button>
+      </div>
+    </div>
+
+    <div class="main">
+      <div id="tab-bar" class="tab-bar"></div>
+      <div id="tab-content" class="tab-content">
+        <div id="welcome" class="welcome">
+          <div class="welcome-inner">
+            <h2>Server Session Manager</h2>
+            <p class="muted">Double-click a connection to open it, or create a new one.</p>
+            <p class="muted small">SSH opens a terminal &middot; SFTP / FTP opens a file browser &middot; RDP launches a remote desktop window</p>
+          </div>
+        </div>
+      </div>
+      <div id="status-bar" class="status-bar hidden"></div>
+    </div>
+  </div>
+
+  <!-- ============ CONNECTION MODAL ============ -->
+  <div id="conn-modal" class="modal-backdrop hidden">
+    <div class="modal">
+      <h2 id="conn-modal-title">New connection</h2>
+      <form id="conn-form">
+        <div class="form-row">
+          <label>Name</label>
+          <input type="text" id="f-name" required placeholder="e.g. Web server (prod)" />
+        </div>
+        <div class="form-row two-col">
+          <div>
+            <label>Protocol</label>
+            <select id="f-protocol">
+              <option value="ssh">SSH</option>
+              <option value="sftp">SFTP</option>
+              <option value="ftp">FTP</option>
+              <option value="ftps">FTPS</option>
+              <option value="rdp">RDP</option>
+            </select>
+          </div>
+          <div>
+            <label>Group</label>
+            <input type="text" id="f-group" placeholder="e.g. Production" list="group-list" />
+            <datalist id="group-list"></datalist>
+          </div>
+        </div>
+        <div class="form-row two-col host-port">
+          <div>
+            <label>Host</label>
+            <input type="text" id="f-host" required placeholder="hostname or IP" />
+          </div>
+          <div>
+            <label>Port</label>
+            <input type="number" id="f-port" min="1" max="65535" />
+          </div>
+        </div>
+        <div class="form-row">
+          <label>Username</label>
+          <input type="text" id="f-username" />
+        </div>
+        <div id="rdp-options" class="hidden">
+          <div class="form-row two-col">
+            <div>
+              <label>Display</label>
+              <select id="f-rdp-display">
+                <option value="tab">Embedded tab</option>
+                <option value="fullscreen">Full screen</option>
+                <option value="window">Window</option>
+                <option value="multimon">All monitors</option>
+              </select>
+            </div>
+            <div id="rdp-size" class="hidden">
+              <label>Window size</label>
+              <div class="key-row">
+                <input type="number" id="f-rdp-width" placeholder="1600" min="640" />
+                <input type="number" id="f-rdp-height" placeholder="900" min="480" />
+              </div>
+            </div>
+          </div>
+          <div class="form-row check-row">
+            <label><input type="checkbox" id="f-rdp-drives" /> Share local drives</label>
+            <label><input type="checkbox" id="f-rdp-printers" /> Share printers</label>
+            <label><input type="checkbox" id="f-rdp-admin" /> Admin session (/admin)</label>
+          </div>
+        </div>
+        <div class="form-row" id="row-auth">
+          <label>Authentication</label>
+          <select id="f-auth">
+            <option value="password">Password</option>
+            <option value="key">Private key file</option>
+            <option value="agent">SSH agent (Windows OpenSSH)</option>
+          </select>
+        </div>
+        <div class="form-row" id="row-password">
+          <label>Password</label>
+          <input type="password" id="f-password" autocomplete="off" />
+        </div>
+        <div class="form-row hidden" id="row-key">
+          <label>Private key file</label>
+          <div class="key-row">
+            <input type="text" id="f-keypath" placeholder="Path to key file" />
+            <button type="button" id="btn-pick-key" class="btn small">Browse</button>
+          </div>
+        </div>
+        <div class="form-row hidden" id="row-passphrase">
+          <label>Key passphrase (optional)</label>
+          <input type="password" id="f-passphrase" autocomplete="off" />
+        </div>
+        <div class="form-row">
+          <label>Notes</label>
+          <textarea id="f-notes" rows="2"></textarea>
+        </div>
+        <div id="conn-form-error" class="error-text hidden"></div>
+        <div class="modal-buttons">
+          <button type="button" id="btn-conn-cancel" class="btn ghost">Cancel</button>
+          <button type="submit" class="btn primary">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ============ CHANGE PASSWORD MODAL ============ -->
+  <div id="pw-modal" class="modal-backdrop hidden">
+    <div class="modal narrow">
+      <h2>Change master password</h2>
+      <form id="pw-form">
+        <div class="form-row">
+          <label>Current password</label>
+          <input type="password" id="pw-old" required />
+        </div>
+        <div class="form-row">
+          <label>New password</label>
+          <input type="password" id="pw-new" required />
+        </div>
+        <div class="form-row">
+          <label>Confirm new password</label>
+          <input type="password" id="pw-new2" required />
+        </div>
+        <div id="pw-error" class="error-text hidden"></div>
+        <div class="pw-forget-row">
+          <button type="button" id="btn-forget-pw" class="btn small ghost">Forget saved password on this device</button>
+        </div>
+        <div class="modal-buttons">
+          <button type="button" id="btn-pw-cancel" class="btn ghost">Cancel</button>
+          <button type="submit" class="btn primary">Change</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ============ PROMPT MODAL (rename / new folder) ============ -->
+  <div id="prompt-modal" class="modal-backdrop hidden">
+    <div class="modal narrow">
+      <h2 id="prompt-title">Rename</h2>
+      <form id="prompt-form">
+        <div class="form-row">
+          <input type="text" id="prompt-input" required />
+        </div>
+        <div class="modal-buttons">
+          <button type="button" id="btn-prompt-cancel" class="btn ghost">Cancel</button>
+          <button type="submit" class="btn primary">OK</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ============ CONFIRM MODAL ============ -->
+  <div id="confirm-modal" class="modal-backdrop hidden">
+    <div class="modal narrow">
+      <h2 id="confirm-title">Are you sure?</h2>
+      <p id="confirm-text" class="muted"></p>
+      <div class="modal-buttons">
+        <button type="button" id="btn-confirm-cancel" class="btn ghost">Cancel</button>
+        <button type="button" id="btn-confirm-ok" class="btn danger">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="../node_modules/@xterm/xterm/lib/xterm.js"></script>
+  <script src="../node_modules/@xterm/addon-fit/lib/addon-fit.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
