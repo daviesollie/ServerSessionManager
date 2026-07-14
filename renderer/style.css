@@ -117,6 +117,9 @@ input:focus, select:focus, textarea:focus {
 .app-title { font-weight: 600; font-size: 15px; }
 #conn-search { margin: 0 12px 10px; width: calc(100% - 24px); }
 
+.conn-sort-row { margin: 0 12px 10px; }
+.conn-sort-row select { font-size: 12px; padding: 5px 8px; color: var(--text-muted); }
+
 .conn-list { flex: 1; overflow-y: auto; padding: 0 8px; }
 .conn-group-label {
   font-size: 11px;
@@ -132,8 +135,12 @@ input:focus, select:focus, textarea:focus {
   display: flex;
   align-items: center;
   gap: 8px;
+  /* Behave like a button: no text selection on double-click, and visible
+     press feedback so connecting feels deliberate. */
+  user-select: none;
 }
 .conn-item:hover { background: var(--bg-raised); }
+.conn-item:active { background: var(--border); }
 .conn-item.selected { background: var(--bg-raised); }
 .conn-proto {
   font-size: 10px;
@@ -171,6 +178,8 @@ input:focus, select:focus, textarea:focus {
 .sidebar-footer {
   display: flex;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px;
   padding: 10px 12px;
   border-top: 1px solid var(--border);
 }
@@ -234,7 +243,67 @@ input:focus, select:focus, textarea:focus {
 .welcome-inner p { margin: 4px 0; }
 
 /* ---------- Terminal pane ---------- */
-.term-pane { flex-direction: column; background: #14161b; }
+.term-pane { flex-direction: row; background: #14161b; }
+.term-host { min-width: 0; }
+
+/* Saved-commands side panel */
+.cmd-panel {
+  display: flex;
+  width: 260px;
+  min-width: 260px;
+  background: var(--bg-alt);
+  border-left: 1px solid var(--border);
+}
+.cmd-panel.collapsed { width: 30px; min-width: 30px; }
+.cmd-panel-handle {
+  writing-mode: vertical-rl;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 12px 8px;
+  white-space: nowrap;
+}
+.cmd-panel-handle:hover { color: var(--text); background: var(--bg-raised); }
+.cmd-panel-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 12px 12px 12px 4px;
+}
+.cmd-panel.collapsed .cmd-panel-body { display: none; }
+.cmd-panel-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+.cmd-list { flex: 1; overflow-y: auto; min-height: 0; }
+.cmd-empty { padding: 4px 6px; }
+.cmd-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 6px;
+  border-radius: var(--radius);
+  user-select: none;
+}
+.cmd-row:hover { background: var(--bg-raised); }
+.cmd-row-label {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  font-size: 13px;
+}
+.cmd-row-actions { display: none; }
+.cmd-row:hover .cmd-row-actions { display: flex; gap: 2px; }
+.cmd-add { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.cmd-add input { font-size: 12px; }
 .term-host { flex: 1; min-height: 0; padding: 6px 0 6px 8px; }
 .term-host .xterm { height: 100%; }
 
@@ -370,6 +439,24 @@ input:focus, select:focus, textarea:focus {
   margin-top: 18px;
 }
 .pw-forget-row { margin-top: 6px; }
+
+/* ---------- Saved credentials modal ---------- */
+.cred-list { max-height: 320px; overflow-y: auto; margin-bottom: 4px; }
+.cred-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border-radius: var(--radius);
+}
+.cred-item:hover { background: var(--bg-raised); }
+.cred-item .cred-name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cred-actions { display: flex; gap: 2px; }
 
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 5px; }

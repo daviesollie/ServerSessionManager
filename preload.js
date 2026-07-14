@@ -24,6 +24,11 @@ contextBridge.exposeInMainWorld('api', {
     save: (conn) => invoke('connections:save', conn),
     delete: (id) => invoke('connections:delete', id),
   },
+  credentials: {
+    list: () => invoke('credentials:list'),
+    save: (cred) => invoke('credentials:save', cred),
+    delete: (id) => invoke('credentials:delete', id),
+  },
   rdp: {
     launch: (connId) => invoke('rdp:launch', connId),
     openEmbedded: (connId, bounds) => invoke('rdp:openEmbedded', { connId, bounds }),
@@ -62,5 +67,6 @@ contextBridge.exposeInMainWorld('api', {
   },
   dialog: {
     pickKeyFile: () => invoke('dialog:pickKeyFile'),
+    importKey: () => invoke('dialog:importKey'),
   },
 });

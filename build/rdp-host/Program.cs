@@ -143,19 +143,20 @@ namespace SsmRdpHost
         // Set once the hwnd event has been emitted; read by the watchdog.
         public static volatile bool Announced;
 
-        // MsRdpClient*NotSafeForScripting CLSIDs (registered as
-        // "Microsoft RDP Client Control (redistributable) - version N"),
-        // newest first. The NotSafeForScripting variants are required to set
-        // ClearTextPassword from a host application. Version 8 and later all
-        // support UpdateSessionDisplaySettings (live resolution change).
+        // MsRdpClient*NotSafeForScripting coclass CLSIDs from the MSTSCLib
+        // type library, newest first. The NotSafeForScripting variants are
+        // REQUIRED: the plain coclasses silently refuse ClearTextPassword, so
+        // the user gets a credential prompt despite a saved password. (Do not
+        // trust the registry friendly names: the "(redistributable)" entries
+        // are the plain safe-for-scripting classes, not these.) MsRdpClient8+
+        // all support UpdateSessionDisplaySettings (live resolution change).
         static readonly string[] CandidateClsids =
         {
-            "945ee98e-b376-4ec2-b2e5-64c9410f93b7", // version 13
-            "22a7e88c-5bf5-4de6-b687-60f7331df190", // version 12
-            "c0efa91a-eeb7-41c7-97fa-f0ed645efb24", // version 11
-            "301b94ba-5d25-4a12-bffe-3b6e7a616585", // version 10
-            "5f681803-2900-4c43-a1cc-cf405404a676", // version 9
-            "a9d7038d-b5ed-472e-9c47-94bea90a5910", // version 8
+            "3f859aa3-c2d4-4faa-b0e4-fd0c9c4e5e3a", // MsRdpClient12NotSafeForScripting
+            "1df7c823-b2d4-4b54-975a-f2ac5d7cf8b8", // MsRdpClient11NotSafeForScripting
+            "a0c63c30-f08d-4ab4-907c-34905d770c7d", // MsRdpClient10NotSafeForScripting
+            "8b918b82-7985-4c24-89df-c33ad2bbfbcd", // MsRdpClient9NotSafeForScripting
+            "a3bc03a0-041d-42e3-ad22-882b7865c9c5", // MsRdpClient8NotSafeForScripting
         };
 
         readonly Dictionary<string, object> cfg;
@@ -302,7 +303,19 @@ namespace SsmRdpHost
             Program.Try(() => { advSet.RDPPort = GetInt("port", 3389); });
             Program.Try(() => { advSet.EnableCredSspSupport = true; });
             string pw = GetStr("password");
-            if (pw.Length > 0) Program.Try(() => { advSet.ClearTextPassword = pw; });
+            if (pw.Length > 0)
+            {
+                // Never swallow this silently: a failed put here is exactly
+                // the "credential prompt despite saved password" bug.
+                try
+                {
+                    advSet.ClearTextPassword = pw;
+                }
+                catch (Exception ex)
+                {
+                    Program.Emit("{\"event\":\"debug\",\"message\":\"ClearTextPassword failed: " + Program.JsonEscape(ex.Message) + "\"}");
+                }
+            }
             // Scale the bitmap while the user is mid-resize; once the resize
             // settles the true resolution is renegotiated below, after which
             // the scale factor is 1:1 again.

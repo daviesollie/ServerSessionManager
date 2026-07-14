@@ -8,9 +8,13 @@ const $ = (sel) => document.querySelector(sel);
 
 const state = {
   connections: [],
+  credentials: [],
   tabs: new Map(), // sessionId -> tab record
   activeSessionId: null,
   editingConnId: null,
+  editingCredId: null,
+  pendingKey: null, // {name, content} picked via Upload, stored in vault on save
+  sort: localStorage.getItem('ssm-sort') || 'name-asc',
 };
 
 // =========================================================
@@ -92,12 +96,18 @@ function formatDate(ms) {
 // =========================================================
 // Lock screen
 // =========================================================
-function enterApp(connections) {
+async function enterApp(connections) {
   state.connections = connections;
+  try {
+    state.credentials = await window.api.credentials.list();
+  } catch (_) {
+    state.credentials = [];
+  }
   $('#lock-password').value = '';
   $('#lock-password2').value = '';
   $('#lock-screen').classList.add('hidden');
   $('#app-screen').classList.remove('hidden');
+  $('#conn-sort').value = state.sort;
   renderConnList();
 }
 
@@ -160,6 +170,48 @@ async function lockApp() {
 // =========================================================
 // Sidebar / connection list
 // =========================================================
+const SORTERS = {
+  'name-asc': (a, b) => a.name.localeCompare(b.name),
+  'name-desc': (a, b) => b.name.localeCompare(a.name),
+  recent: (a, b) => (b.lastConnectedAt || 0) - (a.lastConnectedAt || 0) || a.name.localeCompare(b.name),
+  newest: (a, b) => (b.createdAt || 0) - (a.createdAt || 0) || a.name.localeCompare(b.name),
+  oldest: (a, b) => (a.createdAt || 0) - (b.createdAt || 0) || a.name.localeCompare(b.name),
+};
+
+function connItem(c) {
+  const item = document.createElement('div');
+  item.className = 'conn-item';
+  item.title = `${c.username ? c.username + '@' : ''}${c.host}:${c.port || defaultPort(c.protocol)}${c.notes ? '\n' + c.notes : ''}`;
+
+  const proto = document.createElement('span');
+  proto.className = 'conn-proto ' + c.protocol;
+  proto.textContent = c.protocol.toUpperCase();
+  item.appendChild(proto);
+
+  const name = document.createElement('span');
+  name.className = 'conn-name';
+  name.textContent = c.name;
+  item.appendChild(name);
+
+  const actions = document.createElement('span');
+  actions.className = 'conn-actions';
+  actions.appendChild(
+    iconBtn(c.favourite ? '★' : '☆', c.favourite ? 'Remove from favourites' : 'Add to favourites', () =>
+      toggleFavourite(c)
+    )
+  );
+  if (c.protocol === 'ssh') {
+    actions.appendChild(iconBtn('\u{1F4C1}', 'Open file browser (SFTP)', () => openFiles(c)));
+  }
+  actions.appendChild(iconBtn('✎', 'Edit', () => openConnModal(c)));
+  actions.appendChild(iconBtn('⎘', 'Duplicate', () => duplicateConnection(c)));
+  actions.appendChild(iconBtn('\u{1F5D1}', 'Delete', () => deleteConnection(c)));
+  item.appendChild(actions);
+
+  item.addEventListener('dblclick', () => openConnection(c));
+  return item;
+}
+
 function renderConnList() {
   const list = $('#conn-list');
   const filter = $('#conn-search').value.trim().toLowerCase();
@@ -168,6 +220,7 @@ function renderConnList() {
   // Defensive: never let an unexpected shape blank the list silently.
   if (!Array.isArray(state.connections)) state.connections = [];
 
+  const sorter = SORTERS[state.sort] || SORTERS['name-asc'];
   const conns = state.connections
     .filter(
       (c) =>
@@ -177,52 +230,37 @@ function renderConnList() {
         (c.group || '').toLowerCase().includes(filter) ||
         (c.username || '').toLowerCase().includes(filter)
     )
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .sort(sorter);
 
-  const groups = new Map();
-  for (const c of conns) {
-    const g = c.group || 'Ungrouped';
-    if (!groups.has(g)) groups.set(g, []);
-    groups.get(g).push(c);
-  }
-
-  const groupNames = [...groups.keys()].sort((a, b) =>
-    a === 'Ungrouped' ? 1 : b === 'Ungrouped' ? -1 : a.localeCompare(b)
-  );
-
-  for (const g of groupNames) {
+  const addSection = (labelText, items) => {
     const label = document.createElement('div');
     label.className = 'conn-group-label';
-    label.textContent = g;
+    label.textContent = labelText;
     list.appendChild(label);
-    for (const c of groups.get(g)) {
-      const item = document.createElement('div');
-      item.className = 'conn-item';
-      item.title = `${c.username ? c.username + '@' : ''}${c.host}:${c.port || defaultPort(c.protocol)}${c.notes ? '\n' + c.notes : ''}`;
+    for (const c of items) list.appendChild(connItem(c));
+  };
 
-      const proto = document.createElement('span');
-      proto.className = 'conn-proto ' + c.protocol;
-      proto.textContent = c.protocol.toUpperCase();
-      item.appendChild(proto);
+  // Favourites always pinned on top, in the current sort order.
+  const favs = conns.filter((c) => c.favourite);
+  const rest = conns.filter((c) => !c.favourite);
+  if (favs.length) addSection('★ Favourites', favs);
 
-      const name = document.createElement('span');
-      name.className = 'conn-name';
-      name.textContent = c.name;
-      item.appendChild(name);
-
-      const actions = document.createElement('span');
-      actions.className = 'conn-actions';
-      if (c.protocol === 'ssh') {
-        actions.appendChild(iconBtn('\u{1F4C1}', 'Open file browser (SFTP)', () => openFiles(c)));
-      }
-      actions.appendChild(iconBtn('✎', 'Edit', () => openConnModal(c)));
-      actions.appendChild(iconBtn('⎘', 'Duplicate', () => duplicateConnection(c)));
-      actions.appendChild(iconBtn('\u{1F5D1}', 'Delete', () => deleteConnection(c)));
-      item.appendChild(actions);
-
-      item.addEventListener('dblclick', () => openConnection(c));
-      list.appendChild(item);
+  if (state.sort === 'name-asc' || state.sort === 'name-desc') {
+    // Alphabetical sorts keep the familiar grouped view.
+    const groups = new Map();
+    for (const c of rest) {
+      const g = c.group || 'Ungrouped';
+      if (!groups.has(g)) groups.set(g, []);
+      groups.get(g).push(c);
     }
+    const groupNames = [...groups.keys()].sort((a, b) =>
+      a === 'Ungrouped' ? 1 : b === 'Ungrouped' ? -1 : a.localeCompare(b)
+    );
+    for (const g of groupNames) addSection(g, groups.get(g));
+  } else if (rest.length) {
+    // Chronological sorts are a single flat list: interleaving groups would
+    // break the timeline the user asked to see.
+    addSection(favs.length ? 'Everything else' : 'Connections', rest);
   }
 
   if (!conns.length) {
@@ -240,6 +278,20 @@ function renderConnList() {
     opt.value = g;
     dl.appendChild(opt);
   }
+}
+
+async function toggleFavourite(c) {
+  const saved = await window.api.connections.save({ id: c.id, favourite: !c.favourite });
+  const idx = state.connections.findIndex((x) => x.id === saved.id);
+  if (idx >= 0) state.connections[idx] = saved;
+  renderConnList();
+}
+
+// Reflect a successful connect locally so "recently connected" reorders
+// immediately (the main process persists the same stamp in the vault).
+function markConnected(c) {
+  c.lastConnectedAt = Date.now();
+  if (state.sort === 'recent') renderConnList();
 }
 
 function iconBtn(glyph, title, onClick) {
@@ -306,6 +358,7 @@ async function openRdpTab(c) {
     return;
   }
   setStatus('');
+  markConnected(c);
 
   // Re-key the tab from the placeholder id to the real session id.
   state.tabs.delete(placeholderId);
@@ -334,6 +387,7 @@ async function launchRdp(c) {
   try {
     await window.api.rdp.launch(c.id);
     setStatus(`Remote desktop session to ${c.host} launched in its own window`);
+    markConnected(c);
   } catch (ex) {
     setStatus(`RDP launch failed: ${ex.message}`, 'error');
   }
@@ -359,6 +413,7 @@ async function deleteConnection(c) {
 // =========================================================
 function openConnModal(conn = null) {
   state.editingConnId = conn ? conn.id : null;
+  state.pendingKey = null;
   $('#conn-modal-title').textContent = conn ? 'Edit connection' : 'New connection';
   $('#f-name').value = conn ? conn.name : '';
   $('#f-protocol').value = conn ? conn.protocol : 'ssh';
@@ -368,9 +423,22 @@ function openConnModal(conn = null) {
   $('#f-username').value = conn ? conn.username || '' : '';
   $('#f-auth').value = conn ? conn.authMethod || 'password' : 'password';
   $('#f-password').value = conn ? conn.password || '' : '';
-  $('#f-keypath').value = conn ? conn.keyPath || '' : '';
+  $('#f-keypath').value =
+    conn && conn.keyData ? `[vault] ${conn.keyLabel || 'stored key'}` : conn ? conn.keyPath || '' : '';
   $('#f-passphrase').value = conn ? conn.passphrase || '' : '';
   $('#f-notes').value = conn ? conn.notes || '' : '';
+
+  // Saved-credential picker: rebuilt each open so new credentials appear.
+  const credSel = $('#f-cred');
+  credSel.innerHTML = '<option value="">Enter manually</option>';
+  for (const cred of [...state.credentials].sort((a, b) => a.name.localeCompare(b.name))) {
+    const opt = document.createElement('option');
+    opt.value = cred.id;
+    opt.textContent = cred.username ? `${cred.name} (${cred.username})` : cred.name;
+    credSel.appendChild(opt);
+  }
+  credSel.value = conn && conn.credentialId ? conn.credentialId : '';
+  if (credSel.value !== (conn && conn.credentialId ? conn.credentialId : '')) credSel.value = '';
   const rdp = (conn && conn.rdp) || {};
   $('#f-rdp-display').value = rdp.displayMode || 'tab';
   $('#f-rdp-width').value = rdp.width || '';
@@ -387,11 +455,15 @@ function openConnModal(conn = null) {
 function updateAuthRows() {
   const protocol = $('#f-protocol').value;
   const passwordOnly = protocol === 'ftp' || protocol === 'ftps' || protocol === 'rdp';
+  const usingCred = !!$('#f-cred').value;
   const auth = passwordOnly ? 'password' : $('#f-auth').value;
-  $('#row-auth').classList.toggle('hidden', passwordOnly);
-  $('#row-password').classList.toggle('hidden', auth !== 'password');
-  $('#row-key').classList.toggle('hidden', auth !== 'key');
-  $('#row-passphrase').classList.toggle('hidden', auth !== 'key');
+  // A saved credential supplies username + password, so hide all manual
+  // login fields while one is selected.
+  $('#row-username').classList.toggle('hidden', usingCred);
+  $('#row-auth').classList.toggle('hidden', usingCred || passwordOnly);
+  $('#row-password').classList.toggle('hidden', usingCred || auth !== 'password');
+  $('#row-key').classList.toggle('hidden', usingCred || auth !== 'key');
+  $('#row-passphrase').classList.toggle('hidden', usingCred || auth !== 'key');
   $('#rdp-options').classList.toggle('hidden', protocol !== 'rdp');
   $('#rdp-size').classList.toggle('hidden', $('#f-rdp-display').value !== 'window');
   $('#f-username').placeholder = protocol === 'rdp' ? 'user, DOMAIN\\user or user@domain' : '';
@@ -402,6 +474,7 @@ async function saveConnForm(e) {
   e.preventDefault();
   const protocol = $('#f-protocol').value;
   const passwordOnly = protocol === 'ftp' || protocol === 'ftps' || protocol === 'rdp';
+  const credentialId = $('#f-cred').value || null;
   const conn = {
     id: state.editingConnId,
     name: $('#f-name').value.trim(),
@@ -409,13 +482,30 @@ async function saveConnForm(e) {
     group: $('#f-group').value.trim(),
     host: $('#f-host').value.trim(),
     port: parseInt($('#f-port').value, 10) || defaultPort(protocol),
-    username: $('#f-username').value.trim(),
-    authMethod: passwordOnly ? 'password' : $('#f-auth').value,
-    password: $('#f-password').value,
-    keyPath: $('#f-keypath').value.trim(),
+    credentialId,
+    username: credentialId ? '' : $('#f-username').value.trim(),
+    authMethod: credentialId || passwordOnly ? 'password' : $('#f-auth').value,
+    password: credentialId ? '' : $('#f-password').value,
     passphrase: $('#f-passphrase').value,
     notes: $('#f-notes').value.trim(),
+    // commands intentionally absent: they are managed from the terminal's
+    // side panel, and the vault merge preserves them across edits here.
   };
+  // Private key: an upload stores the key content in the vault (keyData); a
+  // "[vault] ..." display value keeps the already-stored key; anything else
+  // is a plain path and clears any stored key.
+  const keyField = $('#f-keypath').value.trim();
+  if (state.pendingKey) {
+    conn.keyData = state.pendingKey.content;
+    conn.keyLabel = state.pendingKey.name;
+    conn.keyPath = '';
+  } else if (keyField.startsWith('[vault]')) {
+    conn.keyPath = '';
+  } else {
+    conn.keyPath = keyField;
+    conn.keyData = null;
+    conn.keyLabel = null;
+  }
   if (protocol === 'rdp') {
     conn.rdp = {
       displayMode: $('#f-rdp-display').value,
@@ -535,6 +625,7 @@ async function openShell(conn) {
     return;
   }
   setStatus('');
+  markConnected(conn);
 
   const pane = document.createElement('div');
   pane.className = 'pane term-pane';
@@ -574,6 +665,116 @@ async function openShell(conn) {
   rec.term = term;
   rec.fit = fit;
   rec.resizeObs = resizeObs;
+
+  pane.appendChild(buildCmdPanel(conn, sessionId, term));
+}
+
+// Collapsible right-side panel on SSH terminal tabs for the connection's
+// saved commands: add, remove, insert into the terminal (click the label,
+// nothing runs), or run immediately (the play button sends Enter). Changes
+// persist to the connection in the vault.
+function buildCmdPanel(conn, sessionId, term) {
+  const panel = document.createElement('div');
+  panel.className = 'cmd-panel collapsed';
+
+  const handle = document.createElement('button');
+  handle.className = 'cmd-panel-handle';
+  handle.title = 'Saved commands';
+  handle.textContent = '⚡ Commands';
+  handle.addEventListener('click', () => panel.classList.toggle('collapsed'));
+  panel.appendChild(handle);
+
+  const body = document.createElement('div');
+  body.className = 'cmd-panel-body';
+  panel.appendChild(body);
+
+  const title = document.createElement('div');
+  title.className = 'cmd-panel-title';
+  title.textContent = 'Saved commands';
+  body.appendChild(title);
+
+  const list = document.createElement('div');
+  list.className = 'cmd-list';
+  body.appendChild(list);
+
+  const persist = async () => {
+    const saved = await window.api.connections.save({ id: conn.id, commands: conn.commands });
+    const idx = state.connections.findIndex((x) => x.id === saved.id);
+    if (idx >= 0) state.connections[idx] = saved;
+  };
+
+  const render = () => {
+    list.innerHTML = '';
+    const cmds = conn.commands || [];
+    if (!cmds.length) {
+      const empty = document.createElement('div');
+      empty.className = 'muted small cmd-empty';
+      empty.textContent = 'No commands yet. Add one below.';
+      list.appendChild(empty);
+      return;
+    }
+    cmds.forEach((cmd, i) => {
+      const row = document.createElement('div');
+      row.className = 'cmd-row';
+      const label = document.createElement('span');
+      label.className = 'cmd-row-label';
+      label.textContent = cmd.label;
+      label.title = `${cmd.command}\nClick to type into the terminal without running`;
+      label.addEventListener('click', () => {
+        window.api.session.write(sessionId, cmd.command);
+        term.focus();
+      });
+      row.appendChild(label);
+      const actions = document.createElement('span');
+      actions.className = 'cmd-row-actions';
+      actions.appendChild(
+        iconBtn('▶', 'Run now', () => {
+          window.api.session.write(sessionId, cmd.command + '\r');
+          term.focus();
+        })
+      );
+      actions.appendChild(
+        iconBtn('\u{1F5D1}', 'Remove', async () => {
+          conn.commands = (conn.commands || []).filter((_, j) => j !== i);
+          await persist();
+          render();
+        })
+      );
+      row.appendChild(actions);
+      list.appendChild(row);
+    });
+  };
+
+  const form = document.createElement('form');
+  form.className = 'cmd-add';
+  const labelIn = document.createElement('input');
+  labelIn.placeholder = 'Label (optional)';
+  labelIn.spellcheck = false;
+  const cmdIn = document.createElement('input');
+  cmdIn.placeholder = 'Command';
+  cmdIn.spellcheck = false;
+  cmdIn.required = true;
+  const addBtn = document.createElement('button');
+  addBtn.type = 'submit';
+  addBtn.className = 'btn small primary wide';
+  addBtn.textContent = '+ Add command';
+  form.appendChild(labelIn);
+  form.appendChild(cmdIn);
+  form.appendChild(addBtn);
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const command = cmdIn.value.trim();
+    if (!command) return;
+    conn.commands = [...(conn.commands || []), { label: labelIn.value.trim() || command, command }];
+    labelIn.value = '';
+    cmdIn.value = '';
+    await persist();
+    render();
+  });
+  body.appendChild(form);
+
+  render();
+  return panel;
 }
 
 // =========================================================
@@ -589,6 +790,7 @@ async function openFiles(conn) {
     return;
   }
   setStatus('');
+  markConnected(conn);
   const { sessionId, startPath } = result;
 
   const pane = document.createElement('div');
@@ -929,13 +1131,129 @@ $('#btn-conn-cancel').addEventListener('click', () => $('#conn-modal').classList
 $('#conn-form').addEventListener('submit', saveConnForm);
 $('#f-protocol').addEventListener('change', updateAuthRows);
 $('#f-auth').addEventListener('change', updateAuthRows);
+$('#f-cred').addEventListener('change', updateAuthRows);
 $('#f-rdp-display').addEventListener('change', updateAuthRows);
 $('#btn-pick-key').addEventListener('click', async () => {
   const p = await window.api.dialog.pickKeyFile();
-  if (p) $('#f-keypath').value = p;
+  if (p) {
+    $('#f-keypath').value = p;
+    state.pendingKey = null; // typing/browsing a path supersedes an upload
+  }
+});
+$('#btn-upload-key').addEventListener('click', async () => {
+  try {
+    const k = await window.api.dialog.importKey();
+    if (!k) return;
+    state.pendingKey = k;
+    $('#f-keypath').value = `[vault] ${k.name}`;
+  } catch (ex) {
+    const err = $('#conn-form-error');
+    err.textContent = ex.message;
+    err.classList.remove('hidden');
+  }
 });
 $('#conn-search').addEventListener('input', renderConnList);
+$('#conn-sort').addEventListener('change', () => {
+  state.sort = $('#conn-sort').value;
+  localStorage.setItem('ssm-sort', state.sort);
+  renderConnList();
+});
 $('#btn-lock').addEventListener('click', lockApp);
+
+// =========================================================
+// Saved credentials manager
+// =========================================================
+function credShowList() {
+  $('#cred-form').classList.add('hidden');
+  $('#cred-list-view').classList.remove('hidden');
+  $('#cred-modal-title').textContent = 'Saved credentials';
+  renderCredList();
+}
+
+function renderCredList() {
+  const list = $('#cred-list');
+  list.innerHTML = '';
+  if (!state.credentials.length) {
+    const empty = document.createElement('div');
+    empty.className = 'conn-group-label';
+    empty.textContent = 'No saved credentials yet';
+    list.appendChild(empty);
+    return;
+  }
+  for (const cred of [...state.credentials].sort((a, b) => a.name.localeCompare(b.name))) {
+    const item = document.createElement('div');
+    item.className = 'cred-item';
+    const name = document.createElement('span');
+    name.className = 'cred-name';
+    name.textContent = cred.name;
+    item.appendChild(name);
+    const user = document.createElement('span');
+    user.className = 'muted small';
+    user.textContent = cred.username || '';
+    item.appendChild(user);
+    const actions = document.createElement('span');
+    actions.className = 'cred-actions';
+    actions.appendChild(iconBtn('✎', 'Edit', () => credShowForm(cred)));
+    actions.appendChild(iconBtn('\u{1F5D1}', 'Delete', () => deleteCredential(cred)));
+    item.appendChild(actions);
+    list.appendChild(item);
+  }
+}
+
+function credShowForm(cred = null) {
+  state.editingCredId = cred ? cred.id : null;
+  $('#cred-modal-title').textContent = cred ? 'Edit credential' : 'New credential';
+  $('#cf-name').value = cred ? cred.name : '';
+  $('#cf-username').value = cred ? cred.username || '' : '';
+  $('#cf-password').value = cred ? cred.password || '' : '';
+  $('#cred-form-error').classList.add('hidden');
+  $('#cred-list-view').classList.add('hidden');
+  $('#cred-form').classList.remove('hidden');
+  $('#cf-name').focus();
+}
+
+async function deleteCredential(cred) {
+  const inUse = state.connections.filter((c) => c.credentialId === cred.id).length;
+  const yes = await showConfirm(
+    'Delete credential',
+    `Delete "${cred.name}"?` +
+      (inUse ? ` ${inUse} connection(s) use it and will revert to manual login.` : '')
+  );
+  if (!yes) return;
+  await window.api.credentials.delete(cred.id);
+  state.credentials = state.credentials.filter((c) => c.id !== cred.id);
+  for (const c of state.connections) {
+    if (c.credentialId === cred.id) c.credentialId = null;
+  }
+  renderCredList();
+}
+
+$('#btn-credentials').addEventListener('click', () => {
+  $('#cred-modal').classList.remove('hidden');
+  credShowList();
+});
+$('#btn-cred-close').addEventListener('click', () => $('#cred-modal').classList.add('hidden'));
+$('#btn-cred-add').addEventListener('click', () => credShowForm());
+$('#btn-cred-form-cancel').addEventListener('click', credShowList);
+$('#cred-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  try {
+    const saved = await window.api.credentials.save({
+      id: state.editingCredId,
+      name: $('#cf-name').value.trim(),
+      username: $('#cf-username').value.trim(),
+      password: $('#cf-password').value,
+    });
+    const idx = state.credentials.findIndex((c) => c.id === saved.id);
+    if (idx >= 0) state.credentials[idx] = saved;
+    else state.credentials.push(saved);
+    credShowList();
+  } catch (ex) {
+    const err = $('#cred-form-error');
+    err.textContent = ex.message;
+    err.classList.remove('hidden');
+  }
+});
 
 $('#btn-change-pw').addEventListener('click', () => {
   $('#pw-old').value = '';

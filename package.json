@@ -1,7 +1,7 @@
 {
   "name": "server-session-manager",
   "productName": "Server Session Manager",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Portable SSH / SFTP / FTP / RDP connection manager with embedded terminal, file browser and remote desktop",
   "main": "main.js",
   "author": "Ollie Davies",

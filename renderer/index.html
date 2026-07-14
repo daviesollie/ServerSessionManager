@@ -34,8 +34,18 @@
         <button id="btn-new-conn" class="btn small primary" title="New connection">+ New</button>
       </div>
       <input type="search" id="conn-search" placeholder="Search..." />
+      <div class="conn-sort-row">
+        <select id="conn-sort" title="Sort connections">
+          <option value="name-asc">Sort: Name (A to Z)</option>
+          <option value="name-desc">Sort: Name (Z to A)</option>
+          <option value="recent">Sort: Recently connected</option>
+          <option value="newest">Sort: Newest added</option>
+          <option value="oldest">Sort: Oldest added</option>
+        </select>
+      </div>
       <div id="conn-list" class="conn-list"></div>
       <div class="sidebar-footer">
+        <button id="btn-credentials" class="btn small ghost">&#128273; Credentials</button>
         <button id="btn-change-pw" class="btn small ghost">Change password</button>
         <button id="btn-lock" class="btn small ghost">&#128274; Lock</button>
       </div>
@@ -93,6 +103,12 @@
           </div>
         </div>
         <div class="form-row">
+          <label>Login credentials</label>
+          <select id="f-cred">
+            <option value="">Enter manually</option>
+          </select>
+        </div>
+        <div class="form-row" id="row-username">
           <label>Username</label>
           <input type="text" id="f-username" />
         </div>
@@ -136,8 +152,9 @@
         <div class="form-row hidden" id="row-key">
           <label>Private key file</label>
           <div class="key-row">
-            <input type="text" id="f-keypath" placeholder="Path to key file" />
+            <input type="text" id="f-keypath" placeholder="Path to key file, or upload one" />
             <button type="button" id="btn-pick-key" class="btn small">Browse</button>
+            <button type="button" id="btn-upload-key" class="btn small" title="Store a copy of the key inside the encrypted vault">Upload</button>
           </div>
         </div>
         <div class="form-row hidden" id="row-passphrase">
@@ -181,6 +198,39 @@
         <div class="modal-buttons">
           <button type="button" id="btn-pw-cancel" class="btn ghost">Cancel</button>
           <button type="submit" class="btn primary">Change</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ============ SAVED CREDENTIALS MODAL ============ -->
+  <div id="cred-modal" class="modal-backdrop hidden">
+    <div class="modal narrow">
+      <h2 id="cred-modal-title">Saved credentials</h2>
+      <div id="cred-list-view">
+        <div id="cred-list" class="cred-list"></div>
+        <div class="modal-buttons">
+          <button type="button" id="btn-cred-add" class="btn">+ Add credential</button>
+          <button type="button" id="btn-cred-close" class="btn ghost">Close</button>
+        </div>
+      </div>
+      <form id="cred-form" class="hidden">
+        <div class="form-row">
+          <label>Name</label>
+          <input type="text" id="cf-name" required placeholder="e.g. Prod admin account" />
+        </div>
+        <div class="form-row">
+          <label>Username</label>
+          <input type="text" id="cf-username" />
+        </div>
+        <div class="form-row">
+          <label>Password</label>
+          <input type="password" id="cf-password" autocomplete="off" />
+        </div>
+        <div id="cred-form-error" class="error-text hidden"></div>
+        <div class="modal-buttons">
+          <button type="button" id="btn-cred-form-cancel" class="btn ghost">Back</button>
+          <button type="submit" class="btn primary">Save credential</button>
         </div>
       </form>
     </div>

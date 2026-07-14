@@ -204,10 +204,30 @@ handle('connections:list', () => vault.getConnections());
 handle('connections:save', (conn) => vault.saveConnection(conn));
 handle('connections:delete', (id) => vault.deleteConnection(id));
 
+// ---- Saved credentials ----
+handle('credentials:list', () => vault.getCredentials());
+handle('credentials:save', (cred) => vault.saveCredential(cred));
+handle('credentials:delete', (id) => vault.deleteCredential(id));
+
+// Resolve a connection for actual use: a referenced saved credential
+// overrides the connection's own username/password.
 function getConnection(connId) {
   const conn = vault.getConnections().find((c) => c.id === connId);
   if (!conn) throw new Error('Connection not found');
+  if (conn.credentialId) {
+    const cred = vault.getCredentials().find((c) => c.id === conn.credentialId);
+    if (cred) return { ...conn, username: cred.username || '', password: cred.password || '' };
+  }
   return conn;
+}
+
+// Stamp last-connected after a successful open (drives "recently connected").
+function touch(connId) {
+  try {
+    vault.touchConnection(connId);
+  } catch (_) {
+    /* vault locked mid-flight; not worth failing the session over */
+  }
 }
 
 // ---- Sessions ----
@@ -218,16 +238,30 @@ function windowHwnd() {
   return Number(win.getNativeWindowHandle().readBigUInt64LE(0));
 }
 
-handle('rdp:launch', (connId) => rdp.launch(getConnection(connId)));
-handle('rdp:openEmbedded', ({ connId, bounds }) =>
-  rdp.openEmbedded(getConnection(connId), windowHwnd(), bounds)
-);
+handle('rdp:launch', async (connId) => {
+  const r = await rdp.launch(getConnection(connId));
+  touch(connId);
+  return r;
+});
+handle('rdp:openEmbedded', async ({ connId, bounds }) => {
+  const r = await rdp.openEmbedded(getConnection(connId), windowHwnd(), bounds);
+  touch(connId);
+  return r;
+});
 ipcMain.on('rdp:setBounds', (e, { sessionId, bounds }) => rdp.setBounds(sessionId, bounds));
 ipcMain.on('rdp:setVisible', (e, { sessionId, visible }) => rdp.setVisible(sessionId, visible));
 ipcMain.on('rdp:setSuspended', (e, suspended) => rdp.setSuspended(suspended));
 handle('rdp:closeEmbedded', (sessionId) => rdp.closeEmbedded(sessionId));
-handle('session:openShell', (connId) => sessions.openShell(getConnection(connId)));
-handle('session:openFiles', (connId) => sessions.openFiles(getConnection(connId)));
+handle('session:openShell', async (connId) => {
+  const r = await sessions.openShell(getConnection(connId));
+  touch(connId);
+  return r;
+});
+handle('session:openFiles', async (connId) => {
+  const r = await sessions.openFiles(getConnection(connId));
+  touch(connId);
+  return r;
+});
 handle('session:close', (sessionId) => sessions.close(sessionId));
 ipcMain.on('shell:write', (e, { sessionId, data }) => sessions.shellWrite(sessionId, data));
 ipcMain.on('shell:resize', (e, { sessionId, cols, rows }) =>
@@ -295,4 +329,21 @@ handle('dialog:pickKeyFile', async () => {
     ],
   });
   return r.canceled ? null : r.filePaths[0];
+});
+
+// Read a key file's content so it can be stored inside the encrypted vault
+// (the connection then works even if the original file moves or is deleted).
+handle('dialog:importKey', async () => {
+  const r = await dialog.showOpenDialog(win, {
+    title: 'Upload private key into the vault',
+    properties: ['openFile'],
+    filters: [
+      { name: 'Key files', extensions: ['pem', 'ppk', 'key'] },
+      { name: 'All files', extensions: ['*'] },
+    ],
+  });
+  if (r.canceled) return null;
+  const p = r.filePaths[0];
+  if (fs.statSync(p).size > 1024 * 1024) throw new Error('Key file too large (max 1 MB)');
+  return { name: path.basename(p), content: fs.readFileSync(p, 'utf8') };
 });
