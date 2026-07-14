@@ -29,8 +29,10 @@ contextBridge.exposeInMainWorld('api', {
     openEmbedded: (connId, bounds) => invoke('rdp:openEmbedded', { connId, bounds }),
     setBounds: (sessionId, bounds) => ipcRenderer.send('rdp:setBounds', { sessionId, bounds }),
     setVisible: (sessionId, visible) => ipcRenderer.send('rdp:setVisible', { sessionId, visible }),
+    setSuspended: (suspended) => ipcRenderer.send('rdp:setSuspended', suspended),
     closeEmbedded: (sessionId) => invoke('rdp:closeEmbedded', sessionId),
     onEmbedded: (cb) => ipcRenderer.on('rdp:embedded', (e, p) => cb(p)),
+    onReconnecting: (cb) => ipcRenderer.on('rdp:reconnecting', (e, p) => cb(p)),
   },
   session: {
     openShell: (connId) => invoke('session:openShell', connId),

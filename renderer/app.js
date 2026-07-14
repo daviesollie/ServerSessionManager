@@ -893,6 +893,33 @@ window.api.rdp.onEmbedded(({ sessionId }) => {
   }
 });
 
+window.api.rdp.onReconnecting(({ sessionId }) => {
+  const rec = state.tabs.get(sessionId);
+  if (rec && rec.kind === 'rdp') {
+    const msg = rec.paneEl.querySelector('.rdp-message');
+    if (msg)
+      msg.innerHTML =
+        'Resizing session...<br><span class="small">Reconnecting at the new window size.</span>';
+  }
+});
+
+// The embedded RDP sessions are native windows floating above the page, so
+// any modal would open underneath them. Watch every modal backdrop and hide
+// the overlays while at least one modal is open; restore them on close.
+{
+  const modalEls = [...document.querySelectorAll('.modal-backdrop')];
+  let overlaysSuspended = false;
+  const syncOverlaySuspend = () => {
+    const open = modalEls.some((el) => !el.classList.contains('hidden'));
+    if (open !== overlaysSuspended) {
+      overlaysSuspended = open;
+      window.api.rdp.setSuspended(open);
+    }
+  };
+  const modalObs = new MutationObserver(syncOverlaySuspend);
+  for (const el of modalEls) modalObs.observe(el, { attributes: true, attributeFilter: ['class'] });
+}
+
 window.api.session.onProgress(({ name, bytes }) => {
   setStatus(`Transferring ${name}: ${formatSize(bytes)}`, 'busy');
 });

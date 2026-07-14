@@ -78,7 +78,13 @@ app.whenReady().then(() => {
   vault = new Vault(path.join(app.getPath('userData'), 'vault.dat'));
   rememberFile = path.join(app.getPath('userData'), 'remember.dat');
   sessions = new SessionManager(send);
-  rdp = new RdpLauncher(send);
+  // rdp-host.exe (ActiveX host for embedded tabs) sits in resources when
+  // packaged, or in build/ during development. RdpLauncher falls back to
+  // mstsc embedding if it is absent.
+  const hostExe = app.isPackaged
+    ? path.join(process.resourcesPath, 'rdp-host.exe')
+    : path.join(__dirname, 'build', 'rdp-host.exe');
+  rdp = new RdpLauncher(send, hostExe);
   createWindow();
 
   if (process.env.SMOKE_TEST) {
@@ -218,6 +224,7 @@ handle('rdp:openEmbedded', ({ connId, bounds }) =>
 );
 ipcMain.on('rdp:setBounds', (e, { sessionId, bounds }) => rdp.setBounds(sessionId, bounds));
 ipcMain.on('rdp:setVisible', (e, { sessionId, visible }) => rdp.setVisible(sessionId, visible));
+ipcMain.on('rdp:setSuspended', (e, suspended) => rdp.setSuspended(suspended));
 handle('rdp:closeEmbedded', (sessionId) => rdp.closeEmbedded(sessionId));
 handle('session:openShell', (connId) => sessions.openShell(getConnection(connId)));
 handle('session:openFiles', (connId) => sessions.openFiles(getConnection(connId)));

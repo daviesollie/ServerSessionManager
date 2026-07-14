@@ -8,7 +8,8 @@
   "license": "MIT",
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder --win portable"
+    "build:host": "%WINDIR%\\Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe /nologo /target:winexe /platform:anycpu /optimize+ /out:build\\rdp-host.exe /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:Microsoft.CSharp.dll /r:System.Web.Extensions.dll build\\rdp-host\\Program.cs",
+    "dist": "npm run build:host && electron-builder --win portable"
   },
   "devDependencies": {
     "electron": "^33.0.0",
@@ -34,6 +35,12 @@
       "renderer/**/*",
       "build/icon.ico",
       "node_modules/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "build/rdp-host.exe",
+        "to": "rdp-host.exe"
+      }
     ],
     "win": {
       "icon": "build/icon.ico",
