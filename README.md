@@ -1,6 +1,6 @@
 # Server Session Manager
 
-A portable Windows connection manager for SSH, SFTP, FTP, FTPS and RDP. Save your logins once, then double-click to open a session. No installation required.
+A portable Windows connection manager for SSH, SFTP, FTP, FTPS and RDP. Save your logins once, then double-click to open a session. No installation required. Designed as a direct replacement to the trusty Remote Desktop application (Renamed to the Windows App, that can only be used with AVD's and Windows 365 machines) that Microsoft killed off in May 2025, and as a modern alternative to RDCMan but with additonal SSH, SFTP, FTP, FTPS features.
 
 Born out of Microsoft retiring the trusty Remote Desktop app in May 2025 (its successor, the Windows App, only connects to Microsoft's cloud desktops such as AVD and Windows 365), Server Session Manager aims to be a direct replacement for it and a modern alternative to RDCMan, with SSH, SFTP, FTP and FTPS support built in on top.
 
